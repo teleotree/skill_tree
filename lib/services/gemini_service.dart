@@ -26,54 +26,6 @@ class GeminiParseException implements Exception {
   String toString() => 'GeminiParseException: $message';
 }
 
-/// Icon suggestion cache with sentinel to prevent duplicate fetches.
-final Map<String, String> iconSuggestionCache = {};
-const _fetchingSentinel = '__fetching__';
-
-Future<String> fetchIconSuggestionFromGemini(String nodeName, String apiKey) async {
-  if (iconSuggestionCache.containsKey(nodeName)) {
-    final cached = iconSuggestionCache[nodeName]!;
-    if (cached == _fetchingSentinel) return 'star';
-    return cached;
-  }
-
-  iconSuggestionCache[nodeName] = _fetchingSentinel;
-
-  final prompt = '''
-Suggest a single Flutter Icons icon name (from the built-in Icons class) that best represents the skill: "$nodeName". Only return the icon name, e.g., "fire_extinguisher". If none is a good fit, return "star".
-''';
-
-  final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
-  final body = jsonEncode({
-    "contents": [
-      {"parts": [
-        {"text": prompt}
-      ]}
-    ]
-  });
-
-  try {
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: body,
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
-      if (text != null) {
-        final iconName = text.trim().split(RegExp(r'\s+')).first;
-        iconSuggestionCache[nodeName] = iconName;
-        return iconName;
-      }
-    }
-  } catch (e) {
-    debugPrint('Failed to fetch icon suggestion: $e');
-  }
-  iconSuggestionCache[nodeName] = 'star';
-  return 'star';
-}
-
 Future<SkillTreeResponse> fetchSkillTreeFromGemini(String goal, String apiKey) async {
   final prompt = '''
 You are an expert career advisor and curriculum designer. I will give you a job or skill that someone wants to learn.

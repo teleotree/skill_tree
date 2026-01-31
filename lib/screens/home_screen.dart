@@ -13,6 +13,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _controller = TextEditingController();
   bool _loading = false;
   String? _error;
+  String? _validationError;
 
   @override
   void dispose() {
@@ -22,7 +23,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _goToSkillTree() async {
     final goal = _controller.text.trim();
-    if (goal.isEmpty) return;
+
+    if (goal.length < 3) {
+      setState(() {
+        _validationError = 'Goal must be at least 3 characters.';
+      });
+      return;
+    }
+    if (goal.length > 200) {
+      setState(() {
+        _validationError = 'Goal must be 200 characters or fewer.';
+      });
+      return;
+    }
+    setState(() {
+      _validationError = null;
+    });
 
     if (_geminiApiKey.isEmpty) {
       setState(() {
@@ -88,8 +104,16 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: InputDecoration(
                 labelText: 'What is your goal?',
                 border: OutlineInputBorder(),
+                errorText: _validationError,
               ),
               onSubmitted: (_) => _goToSkillTree(),
+              onChanged: (_) {
+                if (_validationError != null) {
+                  setState(() {
+                    _validationError = null;
+                  });
+                }
+              },
             ),
             SizedBox(height: 16),
             ElevatedButton(
@@ -105,7 +129,16 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_error != null) ...[
               SizedBox(height: 16),
               Text(_error!, style: TextStyle(color: Colors.red)),
-            ]
+            ],
+            Spacer(),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: Text(
+                'Your goals are sent to Google\'s Gemini API for processing.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ],
         ),
       ),
