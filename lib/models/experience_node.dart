@@ -20,4 +20,11 @@ class ExperienceNode {
       breakdown: (json['breakdown'] as List<dynamic>? ?? []).map((e) => e.toString()).toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'description': description,
+    'years_required': yearsRequired,
+    'breakdown': breakdown,
+  };
 }

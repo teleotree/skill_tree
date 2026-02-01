@@ -26,4 +26,12 @@ class SkillTreeResponse {
       experience: (json['experience'] as List<dynamic>? ?? []).map((e) => ExperienceNode.fromJson(e)).toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'goal': goal,
+    'description': description,
+    'education': education.map((e) => e.toJson()).toList(),
+    'skills': skills.map((e) => e.toJson()).toList(),
+    'experience': experience.map((e) => e.toJson()).toList(),
+  };
 }

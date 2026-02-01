@@ -10,4 +10,9 @@ class Resource {
       url: json['url'] ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'url': url,
+  };
 }

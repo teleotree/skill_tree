@@ -25,4 +25,12 @@ class EducationOption {
       years: years is int ? years : (years is double ? years.round() : 0),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'description': description,
+    'links': links.map((e) => e.toJson()).toList(),
+    'prerequisites': prerequisites,
+    'years': years,
+  };
 }

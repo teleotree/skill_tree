@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/models.dart';
 import '../services/gemini_service.dart';
+import '../services/history_service.dart';
 import 'skill_tree_screen.dart';
 
 const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
@@ -14,6 +16,22 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = false;
   String? _error;
   String? _validationError;
+  List<SearchHistoryEntry> _history = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final history = await HistoryService.getHistory();
+    if (mounted) {
+      setState(() {
+        _history = history;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -55,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final skillTree = await fetchSkillTreeFromGemini(goal, _geminiApiKey);
       if (!mounted) return;
+      await HistoryService.addEntry(skillTree);
+      await _loadHistory();
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -88,6 +108,15 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  String _relativeTime(DateTime timestamp) {
+    final diff = DateTime.now().difference(timestamp);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${timestamp.month}/${timestamp.day}/${timestamp.year}';
   }
 
   @override
@@ -130,7 +159,52 @@ class _HomeScreenState extends State<HomeScreen> {
               SizedBox(height: 16),
               Text(_error!, style: TextStyle(color: Colors.red)),
             ],
-            Spacer(),
+            if (_history.isNotEmpty) ...[
+              SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Recent Searches',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+              SizedBox(height: 8),
+            ],
+            Expanded(
+              child: _history.isEmpty
+                  ? SizedBox.shrink()
+                  : ListView.builder(
+                      itemCount: _history.length,
+                      itemBuilder: (context, index) {
+                        final entry = _history[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(entry.goal),
+                            subtitle: Text(_relativeTime(entry.timestamp)),
+                            trailing: IconButton(
+                              icon: Icon(Icons.delete_outline, color: Colors.red[300]),
+                              onPressed: () async {
+                                await HistoryService.deleteEntry(entry.id);
+                                await _loadHistory();
+                              },
+                            ),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => SkillTreeScreen(skillTree: entry.response),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
             Padding(
               padding: const EdgeInsets.only(bottom: 16.0),
               child: Text(

@@ -31,4 +31,13 @@ class SkillNode {
       tag: json['tag'] ?? 'informal',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'estimated_time_hours': estimatedTimeHours,
+    'resources': resources.map((e) => e.toJson()).toList(),
+    'subskills': subskills.map((e) => e.toJson()).toList(),
+    'description': description,
+    'tag': tag,
+  };
 }
