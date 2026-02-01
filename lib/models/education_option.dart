@@ -20,7 +20,9 @@ class EducationOption {
     return EducationOption(
       name: json['name'] ?? '',
       description: json['description'] ?? '',
-      links: (json['links'] as List<dynamic>? ?? []).map((e) => Resource.fromJson(e)).toList(),
+      links: (json['links'] as List<dynamic>? ?? []).map((e) =>
+        e is String ? Resource(title: e, url: e) : Resource.fromJson(e as Map<String, dynamic>)
+      ).toList(),
       prerequisites: json['prerequisites'] ?? '',
       years: years is int ? years : (years is double ? years.round() : 0),
     );

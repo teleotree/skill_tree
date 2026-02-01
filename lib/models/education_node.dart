@@ -25,7 +25,9 @@ class EducationNode {
     return EducationNode(
       name: json['name'] ?? '',
       description: json['description'] ?? '',
-      links: (json['links'] as List<dynamic>? ?? []).map((e) => Resource.fromJson(e)).toList(),
+      links: (json['links'] as List<dynamic>? ?? []).map((e) =>
+        e is String ? Resource(title: e, url: e) : Resource.fromJson(e as Map<String, dynamic>)
+      ).toList(),
       prerequisites: json['prerequisites'] ?? '',
       type: json['type'] ?? 'degree',
       options: (json['options'] as List<dynamic>? ?? []).map((e) => EducationOption.fromJson(e)).toList(),

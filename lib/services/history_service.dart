@@ -11,7 +11,15 @@ class HistoryService {
     final raw = prefs.getString(_historyKey);
     if (raw == null) return [];
     final list = jsonDecode(raw) as List<dynamic>;
-    return list.map((e) => SearchHistoryEntry.fromJson(e)).toList();
+    final entries = <SearchHistoryEntry>[];
+    for (final e in list) {
+      try {
+        entries.add(SearchHistoryEntry.fromJson(e));
+      } catch (_) {
+        // Skip corrupted entries
+      }
+    }
+    return entries;
   }
 
   static Future<void> addEntry(SkillTreeResponse response) async {

@@ -1,4 +1,4 @@
-package com.example.skill_tree
+package blanket.skilltree
 
 import io.flutter.embedding.android.FlutterActivity
 

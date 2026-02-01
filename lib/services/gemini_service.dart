@@ -118,11 +118,11 @@ Only return valid JSON. Do not include any explanations or extra text.
           }
         }
         throw GeminiParseException('No text in Gemini response');
-      } else if (response.statusCode == 503) {
-        debugPrint('Gemini API overloaded, attempt ${retryCount + 1} of $maxRetries');
+      } else if (response.statusCode == 429 || response.statusCode == 503) {
+        debugPrint('Gemini API ${response.statusCode == 429 ? "rate limited" : "overloaded"}, attempt ${retryCount + 1} of $maxRetries');
         retryCount++;
         if (retryCount < maxRetries) {
-          await Future.delayed(retryDelay * retryCount);
+          await Future.delayed(retryDelay * retryCount * (response.statusCode == 429 ? 2 : 1));
           continue;
         }
         throw GeminiApiException(response.statusCode, response.body);
