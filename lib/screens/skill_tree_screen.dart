@@ -174,7 +174,7 @@ class _SkillTreeScreenState extends State<SkillTreeScreen> with SingleTickerProv
     final plan = _createPlanFromSkillTree();
     await PlanService.savePlan(plan);
     if (!mounted) return;
-    await Navigator.push(
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => PlanScreen(planId: plan.id),
