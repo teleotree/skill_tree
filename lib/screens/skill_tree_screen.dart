@@ -1,24 +1,21 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../services/plan_service.dart';
+import 'plan_screen.dart';
 
-class SkillTreeScreen extends StatelessWidget {
+class SkillTreeScreen extends StatefulWidget {
   final SkillTreeResponse skillTree;
 
   const SkillTreeScreen({Key? key, required this.skillTree}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Skill Tree for: ${skillTree.goal}'),
-      ),
-      body: SkillTreeListView(skillTree: skillTree),
-    );
-  }
+  State<SkillTreeScreen> createState() => _SkillTreeScreenState();
 }
 
-class SkillTreeListView extends StatefulWidget {
-  final SkillTreeResponse skillTree;
+class _SkillTreeScreenState extends State<SkillTreeScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  Set<String> expandedKeys = {};
+
   final List<Color> branchColors = [
     Color(0xFF5B8CFF),
     Color(0xFF6DD400),
@@ -30,15 +27,17 @@ class SkillTreeListView extends StatefulWidget {
     Color(0xFFFFC53D),
   ];
 
-  SkillTreeListView({Key? key, required this.skillTree}) : super(key: key);
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
 
   @override
-  State<SkillTreeListView> createState() => _SkillTreeListViewState();
-}
-
-class _SkillTreeListViewState extends State<SkillTreeListView> {
-  Set<String> expandedKeys = {};
-  bool get allExpanded => expandedKeys.length >= _allNodeKeys(widget.skillTree.skills).length + (widget.skillTree.experience.isNotEmpty ? widget.skillTree.experience.length : 0);
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _showTooltip(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -96,44 +95,98 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
     });
   }
 
-  int _totalHours(SkillNode node) {
-    int sum = node.estimatedTimeHours;
-    for (var sub in node.subskills) {
-      sum += _totalHours(sub);
+  Plan _createPlanFromSkillTree() {
+    final items = <PlanItem>[];
+    int counter = 0;
+
+    // Build education items first, tracking their IDs and types
+    final eduItems = <PlanItem>[];
+    for (final edu in widget.skillTree.education) {
+      final item = PlanItem(
+        id: 'plan-${counter++}',
+        type: 'education',
+        name: edu.name,
+        description: edu.description,
+        fields: {
+          'years': edu.years,
+          'type': edu.type,
+          'prerequisites': edu.prerequisites,
+        },
+      );
+      eduItems.add(item);
+      items.add(item);
     }
-    return sum;
-  }
 
-  int get totalHours {
-    int sum = 0;
-    for (var node in widget.skillTree.skills) {
-      sum += _totalHours(node);
+    for (final exp in widget.skillTree.experience) {
+      items.add(PlanItem(
+        id: 'plan-${counter++}',
+        type: 'experience',
+        name: exp.title,
+        description: exp.description,
+        fields: {
+          'years_required': exp.yearsRequired,
+          'breakdown': exp.breakdown,
+        },
+      ));
     }
-    return sum;
+
+    // Collect skill items with their education_name for linking
+    final skillItems = <(PlanItem, String?)>[];
+    void addSkills(List<SkillNode> skills) {
+      for (final skill in skills) {
+        final item = PlanItem(
+          id: 'plan-${counter++}',
+          type: 'skill',
+          name: skill.name,
+          description: skill.description,
+          fields: {
+            'tag': skill.tag,
+          },
+          resources: List.from(skill.resources),
+        );
+        skillItems.add((item, skill.educationName));
+        items.add(item);
+        addSkills(skill.subskills);
+      }
+    }
+    addSkills(widget.skillTree.skills);
+
+    // Link skills to their specific education item by matching education_name.
+    for (final edu in eduItems) {
+      final linkedIds = <String>[];
+      for (final (skill, eduName) in skillItems) {
+        if (eduName != null && eduName == edu.name) {
+          linkedIds.add(skill.id);
+        }
+      }
+      edu.linkedSkillIds = linkedIds;
+    }
+
+    return Plan(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      goal: widget.skillTree.goal,
+      createdAt: DateTime.now(),
+      items: items,
+    );
   }
 
-  void _expandAll() {
-    setState(() {
-      expandedKeys.addAll(_allSkillKeys());
-      expandedKeys.addAll(_allEducationKeys());
-      expandedKeys.addAll(_allExperienceKeys());
-    });
-  }
-
-  void _collapseAll() {
-    setState(() {
-      expandedKeys.clear();
-    });
+  void _createPlan() async {
+    final plan = _createPlanFromSkillTree();
+    await PlanService.savePlan(plan);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlanScreen(planId: plan.id),
+      ),
+    );
   }
 
   Widget _buildSummaryCard(BuildContext context) {
     int totalExperienceYears = 0;
-    int totalDegreeHours = 0;
-    int totalCertificationHours = 0;
-    int totalInformalHours = 0;
-
     int minTotalYears = 0;
     int maxTotalYears = 0;
+
     for (var edu in widget.skillTree.education) {
       if (edu.options.isNotEmpty) {
         int minYears = edu.options.map((o) => o.years).fold(1000, (a, b) => b < a ? b : a);
@@ -148,18 +201,6 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
 
     for (var exp in widget.skillTree.experience) {
       totalExperienceYears += exp.yearsRequired;
-    }
-
-    for (var node in widget.skillTree.skills) {
-      _countHoursByTag(node, (tag, hours) {
-        if (tag == 'degree') {
-          totalDegreeHours += hours;
-        } else if (tag == 'certification') {
-          totalCertificationHours += hours;
-        } else {
-          totalInformalHours += hours;
-        }
-      });
     }
 
     String yearsText;
@@ -212,52 +253,25 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
               fontSize: 16,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
-            'Total Skills Hours: $totalHours',
-            style: TextStyle(
-              color: Colors.amberAccent,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Skill Hours Breakdown:',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Degree: $totalDegreeHours hours',
-            style: TextStyle(
-              color: Colors.blue[300],
-              fontSize: 14,
-            ),
-          ),
-          Text(
-            'Certification: $totalCertificationHours hours',
-            style: TextStyle(
-              color: Colors.orange[300],
-              fontSize: 14,
-            ),
-          ),
-          Text(
-            'Informal: $totalInformalHours hours',
-            style: TextStyle(
-              color: Colors.green[300],
-              fontSize: 14,
-            ),
-          ),
           SizedBox(height: 12),
           Text(
-            widget.skillTree.description.isNotEmpty ? widget.skillTree.description : _goalDescription(widget.skillTree.goal),
+            widget.skillTree.description.isNotEmpty
+                ? widget.skillTree.description
+                : 'This skill tree outlines the key skills and resources needed to achieve the goal of "${widget.skillTree.goal}". Expand each section to explore the learning path.',
             style: TextStyle(
               color: Colors.white70,
               fontSize: 15,
+            ),
+          ),
+          SizedBox(height: 16),
+          ElevatedButton.icon(
+            icon: Icon(Icons.playlist_add_check),
+            label: Text('Create Plan'),
+            onPressed: _createPlan,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
@@ -265,207 +279,135 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
     );
   }
 
-  void _countHoursByTag(SkillNode node, Function(String tag, int hours) callback) {
-    callback(node.tag, node.estimatedTimeHours);
-    for (var sub in node.subskills) {
-      _countHoursByTag(sub, callback);
-    }
+  Widget _buildSectionExpandButton(String section, Color color) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Row(
+        children: [
+          ElevatedButton.icon(
+            icon: Icon(_isSectionExpanded(section) ? Icons.unfold_less : Icons.unfold_more),
+            label: Text(_isSectionExpanded(section) ? 'Collapse All' : 'Expand All'),
+            onPressed: _isSectionExpanded(section) ? () => _collapseSection(section) : () => _expandSection(section),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  String _goalDescription(String goal) {
-    return 'This skill tree outlines the key skills and resources needed to achieve the goal of "$goal". Expand each section to explore the learning path.';
+  Widget _buildTabWithStickyButton(String section, Color buttonColor, Widget listContent) {
+    return Column(
+      children: [
+        _buildSectionExpandButton(section, buttonColor),
+        Expanded(child: listContent),
+      ],
+    );
+  }
+
+  Widget _buildEducationTab() {
+    final education = widget.skillTree.education;
+    if (education.isEmpty) {
+      return Center(child: Text('No education requirements found.', style: TextStyle(color: Colors.white70)));
+    }
+    return _buildTabWithStickyButton(
+      'education',
+      Colors.indigo[800]!,
+      ListView.builder(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: education.length,
+        itemBuilder: (context, index) {
+          return _buildEducationTile(education[index], index.toString());
+        },
+      ),
+    );
+  }
+
+  Widget _buildExperienceTab() {
+    final experience = widget.skillTree.experience;
+    if (experience.isEmpty) {
+      return Center(child: Text('No experience requirements found.', style: TextStyle(color: Colors.white70)));
+    }
+    return _buildTabWithStickyButton(
+      'experience',
+      Colors.teal[800]!,
+      ListView.builder(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: experience.length,
+        itemBuilder: (context, index) {
+          return _buildExperienceTile(experience[index], index.toString());
+        },
+      ),
+    );
+  }
+
+  Widget _buildSkillsTab() {
+    final skills = widget.skillTree.skills;
+    if (skills.isEmpty) {
+      return Center(child: Text('No skills found.', style: TextStyle(color: Colors.white70)));
+    }
+    return _buildTabWithStickyButton(
+      'skills',
+      Colors.blue[800]!,
+      ListView.builder(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: skills.length,
+        itemBuilder: (context, index) {
+          final node = skills[index];
+          final color = branchColors[index % branchColors.length];
+          return _buildExpansionTile(node, color, 0, index.toString());
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final expCount = widget.skillTree.experience.length;
-    final skillCount = widget.skillTree.skills.length;
-    final eduCount = widget.skillTree.education.length;
-    final hasExperience = expCount > 0;
-    final hasEducation = eduCount > 0;
-    return ListView.builder(
-        padding: EdgeInsets.all(16),
-      itemCount: skillCount + (hasExperience ? 1 + expCount : 0) + (hasEducation ? 1 + eduCount : 0) + 3,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return _buildSummaryCard(context);
-        }
-        if (index == 1) {
-          return Row(
-            children: [
-              ElevatedButton.icon(
-                icon: Icon(allExpanded ? Icons.unfold_less : Icons.unfold_more),
-                label: Text(allExpanded ? 'Collapse All' : 'Expand All'),
-                onPressed: allExpanded ? _collapseAll : _expandAll,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey[800],
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Skill Tree for: ${widget.skillTree.goal}'),
+      ),
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          return [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: _buildSummaryCard(context),
+              ),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _TabBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  tabs: [
+                    Tab(text: 'Education'),
+                    Tab(text: 'Experience'),
+                    Tab(text: 'Skills'),
+                  ],
+                  indicatorColor: Colors.blue[300],
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white54,
                 ),
               ),
-            ],
-          );
-        }
-        if (hasEducation && index == 2) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Education/Certification Required',
-                      style: TextStyle(
-                        color: Colors.indigo[300],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: 'This section lists all required degrees and certifications for your goal.',
-                      child: InkWell(
-                        onTap: () => _showTooltip(context, 'This section lists all required degrees and certifications for your goal.'),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Icon(Icons.info_outline, size: 18, color: Colors.indigo[300]),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 6),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      icon: Icon(_isSectionExpanded('education') ? Icons.unfold_less : Icons.unfold_more),
-                      label: Text(_isSectionExpanded('education') ? 'Collapse Section' : 'Expand Section'),
-                      onPressed: _isSectionExpanded('education') ? () => _collapseSection('education') : () => _expandSection('education'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo[800],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
-          );
-        }
-        if (hasEducation && index > 2 && index <= 2 + eduCount) {
-          final edu = widget.skillTree.education[index - 3];
-          return _buildEducationTile(edu, (index - 3).toString());
-        }
-        final expStart = hasEducation ? 3 + eduCount : 2;
-        if (hasExperience && index == expStart) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Experience Required',
-                      style: TextStyle(
-                        color: Colors.tealAccent[400],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: 'This section lists the types and years of experience typically required.',
-                      child: InkWell(
-                        onTap: () => _showTooltip(context, 'This section lists the types and years of experience typically required.'),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Icon(Icons.info_outline, size: 18, color: Colors.tealAccent[400]),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 6),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      icon: Icon(_isSectionExpanded('experience') ? Icons.unfold_less : Icons.unfold_more),
-                      label: Text(_isSectionExpanded('experience') ? 'Collapse Section' : 'Expand Section'),
-                      onPressed: _isSectionExpanded('experience') ? () => _collapseSection('experience') : () => _expandSection('experience'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal[800],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }
-        if (hasExperience && index > expStart && index <= expStart + expCount) {
-          final exp = widget.skillTree.experience[index - (expStart + 1)];
-          return _buildExperienceTile(exp, (index - (expStart + 1)).toString());
-        }
-        final skillStart = (hasEducation ? 3 + eduCount : 2) + (hasExperience ? 1 + expCount : 0);
-        if (index == skillStart) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Skills Required',
-                      style: TextStyle(
-                        color: Colors.blue[300],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    SizedBox(width: 4),
-                    Tooltip(
-                      message: 'This section lists all the skills you need to achieve your goal.',
-                      child: InkWell(
-                        onTap: () => _showTooltip(context, 'This section lists all the skills you need to achieve your goal.'),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Icon(Icons.info_outline, size: 18, color: Colors.blue[300]),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 6),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      icon: Icon(_isSectionExpanded('skills') ? Icons.unfold_less : Icons.unfold_more),
-                      label: Text(_isSectionExpanded('skills') ? 'Collapse Section' : 'Expand Section'),
-                      onPressed: _isSectionExpanded('skills') ? () => _collapseSection('skills') : () => _expandSection('skills'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[800],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        }
-        final nodeIndex = index - (skillStart + 1);
-        if (nodeIndex < 0 || nodeIndex >= skillCount) return SizedBox.shrink();
-        final node = widget.skillTree.skills[nodeIndex];
-        final color = widget.branchColors[nodeIndex % widget.branchColors.length];
-        return _buildExpansionTile(node, color, 0, nodeIndex.toString());
-      },
+          ];
+        },
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildEducationTab(),
+            _buildExperienceTab(),
+            _buildSkillsTab(),
+          ],
+        ),
+      ),
     );
   }
 
@@ -894,12 +836,10 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${node.estimatedTimeHours} hrs', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 4),
                       if (node.description.isNotEmpty)
                         Text(node.description, style: TextStyle(color: Colors.white70, fontSize: 13)),
                       if (node.description.isEmpty)
-                        Text(_skillDescription(node.name), style: TextStyle(color: Colors.white70, fontSize: 13)),
+                        Text('This skill is essential for achieving your goal and will help you progress along your learning path.', style: TextStyle(color: Colors.white70, fontSize: 13)),
                       if (node.resources.isNotEmpty) ...[
                         SizedBox(height: 8),
                         Text('Resources:', style: TextStyle(color: color, fontWeight: FontWeight.bold)),
@@ -932,10 +872,6 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
     );
   }
 
-  String _skillDescription(String name) {
-    return 'This skill is essential for achieving your goal and will help you progress along your learning path.';
-  }
-
   Widget _buildSkillTagChip(String tag) {
     Color bgColor;
     IconData icon;
@@ -954,11 +890,18 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
         label = 'Certification';
         tooltip = 'Skill learned as part of a professional certification';
         break;
+      case 'experience':
+        bgColor = Color(0xFF00897B);
+        icon = Icons.work;
+        label = 'Experience';
+        tooltip = 'Skill learned primarily through work experience';
+        break;
+      case 'informal':
       default:
         bgColor = Color(0xFF43A047);
         icon = Icons.lightbulb;
-        label = 'Informal';
-        tooltip = 'Skill learned outside formal education/certification';
+        label = 'Other';
+        tooltip = 'Skill learned outside formal education/certification/experience';
         break;
     }
     return InkWell(
@@ -982,4 +925,27 @@ class _SkillTreeListViewState extends State<SkillTreeListView> {
       ),
     );
   }
+}
+
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+
+  _TabBarDelegate(this.tabBar);
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Colors.blueGrey[900],
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
 }

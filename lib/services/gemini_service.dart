@@ -33,10 +33,10 @@ You are an expert career advisor and curriculum designer. I will give you a job 
 For the given job or skill, return a hierarchical, ordered list of skills required to attain it. Each skill should include:
 - "name": the skill name
 - "description": a one-sentence summary of what the skill is and why it matters
-- "estimated_time_hours": estimated hours to learn
 - "resources": a list of recommended resources (each with "title" and "url")
 - "subskills": a list of subskills (with the same structure), ordered by learning sequence
-- "tag": either "degree" (learned as part of a required degree), "certification" (learned as part of a required certification), or "informal" (learned outside formal education/certification)
+- "tag": either "degree" (learned as part of a required degree), "certification" (learned as part of a required certification), "experience" (learned primarily through work experience), or "other" (learned outside formal education/certification/experience)
+- "education_name": if the tag is "degree" or "certification", the exact name of the education/certification entry from the education list where this skill is learned. Must match one of the education names exactly. Omit if tag is "experience" or "other".
 
 In addition to skills and experience, also return an "education" field: a list of traditional education and certification requirements for the goal.
 
@@ -133,6 +133,89 @@ Only return valid JSON. Do not include any explanations or extra text.
     } catch (e) {
       if (e is GeminiParseException || e is GeminiApiException) rethrow;
       debugPrint('Network error: $e');
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await Future.delayed(retryDelay * retryCount);
+        continue;
+      }
+      throw GeminiNetworkException('$e');
+    }
+  }
+
+  throw GeminiNetworkException('All retries exhausted');
+}
+
+Future<List<Resource>> fetchEducationResources(PlanItem item, String apiKey) async {
+  final prompt = '''
+You are an expert career advisor. Given the following plan item, recommend learning resources.
+
+Item name: ${item.name}
+Item type: ${item.type}
+Item description: ${item.description}
+Additional fields: ${item.fields}
+
+Return a JSON array of resources, each with:
+- "title": the resource name
+- "url": a valid URL to the resource
+- "description": a one-sentence description of what the resource offers
+
+Only return valid JSON. Do not include any explanations or extra text.
+''';
+
+  final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
+
+  final requestBody = jsonEncode({
+    "contents": [
+      {"parts": [
+        {"text": prompt}
+      ]}
+    ]
+  });
+
+  const maxRetries = 3;
+  int retryCount = 0;
+  const retryDelay = Duration(seconds: 2);
+
+  while (retryCount < maxRetries) {
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (text != null) {
+          try {
+            String cleaned = text.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.substring(cleaned.indexOf('\n') + 1);
+              if (cleaned.endsWith('```')) {
+                cleaned = cleaned.substring(0, cleaned.lastIndexOf('```')).trim();
+              }
+            }
+            final jsonData = jsonDecode(cleaned) as List<dynamic>;
+            return jsonData.map((e) => Resource.fromJson(e)).toList();
+          } catch (e) {
+            debugPrint('Failed to parse JSON from Gemini: $e');
+            throw GeminiParseException('Failed to parse response: $e');
+          }
+        }
+        throw GeminiParseException('No text in Gemini response');
+      } else if (response.statusCode == 429 || response.statusCode == 503) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(retryDelay * retryCount * (response.statusCode == 429 ? 2 : 1));
+          continue;
+        }
+        throw GeminiApiException(response.statusCode, response.body);
+      } else {
+        throw GeminiApiException(response.statusCode, response.body);
+      }
+    } catch (e) {
+      if (e is GeminiParseException || e is GeminiApiException) rethrow;
       retryCount++;
       if (retryCount < maxRetries) {
         await Future.delayed(retryDelay * retryCount);

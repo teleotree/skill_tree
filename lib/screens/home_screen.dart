@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/gemini_service.dart';
 import '../services/history_service.dart';
+import '../services/plan_service.dart';
 import 'skill_tree_screen.dart';
+import 'plan_screen.dart';
 
 const List<String> _loadingMessages = [
   'Consulting the gurus...',
@@ -175,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
   String? _validationError;
   List<SearchHistoryEntry> _history = [];
+  List<Plan> _plans = [];
   String _loadingMessage = '';
   Timer? _loadingMessageTimer;
   List<int> _remainingMessageIndices = [];
@@ -183,6 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadHistory();
+    _loadPlans();
   }
 
   Future<void> _loadHistory() async {
@@ -190,6 +194,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) {
       setState(() {
         _history = history;
+      });
+    }
+  }
+
+  Future<void> _loadPlans() async {
+    final plans = await PlanService.getPlans();
+    if (mounted) {
+      setState(() {
+        _plans = plans;
       });
     }
   }
@@ -230,9 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _goToSkillTree() async {
-    final goal = _controller.text.trim().split(' ').map((w) =>
-      w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}'
-    ).join(' ');
+    final goal = _controller.text.trim();
 
     if (goal.length < 3) {
       setState(() {
@@ -269,12 +280,13 @@ class _HomeScreenState extends State<HomeScreen> {
       await HistoryService.addEntry(skillTree);
       await _loadHistory();
       _controller.clear();
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => SkillTreeScreen(skillTree: skillTree),
         ),
       );
+      _loadPlans();
     } on GeminiNetworkException {
       if (!mounted) return;
       setState(() {
@@ -305,16 +317,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _formatSkillTime(int hours) {
-    final weeks = hours / 40;
-    final months = weeks / 4.33;
-    final years = months / 12;
-    if (years >= 1) return '${years.round()}y';
-    if (months >= 1) return '${months.round()}mo';
-    if (weeks >= 1) return '${weeks.round()}w';
-    return '${hours}h';
-  }
-
   String _relativeTime(DateTime timestamp) {
     final diff = DateTime.now().difference(timestamp);
     if (diff.inMinutes < 1) return 'just now';
@@ -324,14 +326,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${timestamp.month}/${timestamp.day}/${timestamp.year}';
   }
 
+  // Max height for scrollable list sections (approx 3 items)
+  static const double _maxSectionHeight = 240;
+
   @override
   Widget build(BuildContext context) {
+    final sectionTitleColor = Theme.of(context).inputDecorationTheme.labelStyle?.color
+        ?? Theme.of(context).colorScheme.onSurface;
+
     return Scaffold(
       appBar: AppBar(title: Text('What do you want to do?')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(
               controller: _controller,
@@ -351,105 +359,143 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loading ? null : _goToSkillTree,
-              child: _loading
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text('Show me the way'),
+            Center(
+              child: ElevatedButton(
+                onPressed: _loading ? null : _goToSkillTree,
+                child: _loading
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('Show me the way'),
+              ),
             ),
             if (_loading && _loadingMessage.isNotEmpty) ...[
               SizedBox(height: 12),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: Text(
-                  _loadingMessage,
-                  key: ValueKey(_loadingMessage),
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
+              Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: Text(
+                    _loadingMessage,
+                    key: ValueKey(_loadingMessage),
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
               ),
             ],
             if (_error != null) ...[
               SizedBox(height: 16),
-              Text(_error!, style: TextStyle(color: Colors.red)),
+              Center(child: Text(_error!, style: TextStyle(color: Colors.red))),
             ],
-            if (_history.isNotEmpty) ...[
+            if (_plans.isNotEmpty) ...[
               SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Recent Searches',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Theme.of(context).inputDecorationTheme.labelStyle?.color
-                        ?? Theme.of(context).colorScheme.onSurface,
-                  ),
+              Text(
+                'My Plans',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: sectionTitleColor,
                 ),
               ),
               SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: _maxSectionHeight),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _plans.length,
+                  itemBuilder: (context, index) {
+                    final plan = _plans[index];
+                    final completed = plan.items.where((i) => i.completed).length;
+                    final total = plan.items.length;
+                    return Card(
+                      child: ListTile(
+                        title: Text(plan.goal),
+                        subtitle: Text('$completed/$total completed'),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline, color: Colors.red[300]),
+                          onPressed: () async {
+                            await PlanService.deletePlan(plan.id);
+                            await _loadPlans();
+                          },
+                        ),
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PlanScreen(planId: plan.id),
+                            ),
+                          );
+                          _loadPlans();
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
-            Expanded(
-              child: _history.isEmpty
-                  ? SizedBox.shrink()
-                  : ListView.builder(
-                      itemCount: _history.length,
-                      itemBuilder: (context, index) {
-                        final entry = _history[index];
-                        final eduYears = entry.response.education.fold<int>(0, (sum, e) => sum + e.years);
-                        final expYears = entry.response.experience.fold<int>(0, (sum, e) => sum + e.yearsRequired);
-                        int _totalSkillHours(List<SkillNode> skills) {
-                          int total = 0;
-                          for (final s in skills) {
-                            total += s.estimatedTimeHours;
-                            total += _totalSkillHours(s.subskills);
-                          }
-                          return total;
-                        }
-                        final skillHours = _totalSkillHours(entry.response.skills);
-                        final skillTime = _formatSkillTime(skillHours);
-                        return Card(
-                          child: ListTile(
-                            title: Text(entry.goal),
-                            subtitle: Text(
-                              '${_relativeTime(entry.timestamp)}\n'
-                              '${eduYears}y education · ${expYears}y experience · $skillTime skills',
+            if (_history.isNotEmpty) ...[
+              SizedBox(height: 24),
+              Text(
+                'Recent Searches',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: sectionTitleColor,
+                ),
+              ),
+              SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: _maxSectionHeight),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _history.length,
+                  itemBuilder: (context, index) {
+                    final entry = _history[index];
+                    final eduYears = entry.response.education.fold<int>(0, (sum, e) => sum + e.years);
+                    final expYears = entry.response.experience.fold<int>(0, (sum, e) => sum + e.yearsRequired);
+                    return Card(
+                      child: ListTile(
+                        title: Text(entry.goal),
+                        subtitle: Text(
+                          '${_relativeTime(entry.timestamp)}\n'
+                          '${eduYears}y education · ${expYears}y experience',
+                        ),
+                        isThreeLine: true,
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline, color: Colors.red[300]),
+                          onPressed: () async {
+                            await HistoryService.deleteEntry(entry.id);
+                            await _loadHistory();
+                          },
+                        ),
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SkillTreeScreen(skillTree: entry.response),
                             ),
-                            isThreeLine: true,
-                            trailing: IconButton(
-                              icon: Icon(Icons.delete_outline, color: Colors.red[300]),
-                              onPressed: () async {
-                                await HistoryService.deleteEntry(entry.id);
-                                await _loadHistory();
-                              },
-                            ),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => SkillTreeScreen(skillTree: entry.response),
-                                ),
-                              );
-                            },
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
+                          );
+                          _loadPlans();
+                        },
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+            SizedBox(height: 16),
+            Center(
               child: Text(
                 'Your goals are sent to Google\'s Gemini API for processing.',
                 style: TextStyle(color: Colors.grey, fontSize: 12),
                 textAlign: TextAlign.center,
               ),
             ),
+            SizedBox(height: 16),
           ],
         ),
       ),
