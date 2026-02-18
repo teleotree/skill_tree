@@ -11,6 +11,10 @@ class PlanItem {
   /// IDs of skill PlanItems that are learned as part of this item.
   /// When this item is marked complete, linked skills are also completed.
   List<String> linkedSkillIds;
+  /// Priority for gap analysis results: 'high', 'medium', 'low', or null.
+  String? priority;
+  /// Whether this item is currently being actively worked on.
+  bool isActive;
 
   PlanItem({
     required this.id,
@@ -21,6 +25,8 @@ class PlanItem {
     this.completed = false,
     this.resources = const [],
     this.linkedSkillIds = const [],
+    this.priority,
+    this.isActive = false,
   });
 
   factory PlanItem.fromJson(Map<String, dynamic> json) {
@@ -37,6 +43,8 @@ class PlanItem {
       linkedSkillIds: (json['linked_skill_ids'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList(),
+      priority: json['priority'],
+      isActive: json['is_active'] ?? false,
     );
   }
 
@@ -49,5 +57,7 @@ class PlanItem {
     'completed': completed,
     'resources': resources.map((e) => e.toJson()).toList(),
     'linked_skill_ids': linkedSkillIds,
+    if (priority != null) 'priority': priority,
+    'is_active': isActive,
   };
 }

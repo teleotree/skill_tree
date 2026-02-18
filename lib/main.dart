@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'screens/screens.dart';
+import 'screens/main_nav_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,6 +10,6 @@ void main() {
       primarySwatch: Colors.blue,
       textTheme: GoogleFonts.interTextTheme(),
     ),
-    home: HomeScreen(),
+    home: MainNavScreen(),
   ));
 }

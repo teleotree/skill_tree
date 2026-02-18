@@ -145,6 +145,257 @@ Only return valid JSON. Do not include any explanations or extra text.
   throw GeminiNetworkException('All retries exhausted');
 }
 
+Future<Plan> fetchGapAnalysis(String goal, String currentSkills, List<SkillProposal> checkedSkills, String apiKey) async {
+  final checkedSection = checkedSkills.isNotEmpty
+      ? '\nSkills the user already has (from career exploration):\n${checkedSkills.map((s) => '- ${s.name}').join('\n')}'
+      : '';
+
+  final prompt = '''
+You are an expert career advisor. A user wants to achieve a career goal and has described their current skills. Perform a gap analysis and return a prioritized action plan.
+
+Target career/goal: $goal
+
+User's self-described current skills and experience:
+$currentSkills
+$checkedSection
+
+Based on the gap between where they are and where they need to be, return a JSON object with this structure:
+{
+  "goal": "<the target goal>",
+  "items": [
+    {
+      "type": "education" | "experience" | "skill",
+      "name": "<action item name>",
+      "description": "<what they need to do and why>",
+      "priority": "high" | "medium" | "low",
+      "fields": {
+        "tag": "degree" | "certification" | "experience" | "other"
+      }
+    }
+  ]
+}
+
+Order items by recommended sequence (what to do first). Include 5-15 items covering the most important gaps. Each item should be actionable.
+
+Only return valid JSON. Do not include any explanations or extra text.
+''';
+
+  final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
+
+  final requestBody = jsonEncode({
+    "contents": [
+      {"parts": [
+        {"text": prompt}
+      ]}
+    ]
+  });
+
+  const maxRetries = 3;
+  int retryCount = 0;
+  const retryDelay = Duration(seconds: 2);
+
+  while (retryCount < maxRetries) {
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (text != null) {
+          try {
+            String cleaned = text.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.substring(cleaned.indexOf('\n') + 1);
+              if (cleaned.endsWith('```')) {
+                cleaned = cleaned.substring(0, cleaned.lastIndexOf('```')).trim();
+              }
+            }
+            final jsonData = jsonDecode(cleaned);
+
+            // Create completed PlanItems from skills user already has
+            final completedItems = checkedSkills.asMap().entries.map((entry) {
+              final skill = entry.value;
+              return PlanItem(
+                id: 'initial-${entry.key}',
+                type: 'skill',
+                name: skill.name,
+                description: skill.description.isNotEmpty ? skill.description : 'Skill you already have',
+                fields: {'tag': 'other', 'level': skill.level},
+                completed: true,
+              );
+            }).toList();
+
+            // Create pending PlanItems from gap analysis
+            final pendingItems = (jsonData['items'] as List<dynamic>).asMap().entries.map((entry) {
+              final e = entry.value;
+              return PlanItem(
+                id: 'gap-${entry.key}',
+                type: e['type'] ?? 'skill',
+                name: e['name'] ?? '',
+                description: e['description'] ?? '',
+                fields: Map<String, dynamic>.from(e['fields'] ?? {}),
+                priority: e['priority'],
+              );
+            }).toList();
+
+            return Plan(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              goal: jsonData['goal'] ?? goal,
+              createdAt: DateTime.now(),
+              items: [...completedItems, ...pendingItems],
+              initiallyCompletedSkills: checkedSkills.map((s) => s.name).toList(),
+            );
+          } catch (e) {
+            debugPrint('Failed to parse JSON from Gemini: $e');
+            throw GeminiParseException('Failed to parse response: $e');
+          }
+        }
+        throw GeminiParseException('No text in Gemini response');
+      } else if (response.statusCode == 429 || response.statusCode == 503) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(retryDelay * retryCount * (response.statusCode == 429 ? 2 : 1));
+          continue;
+        }
+        throw GeminiApiException(response.statusCode, response.body);
+      } else {
+        throw GeminiApiException(response.statusCode, response.body);
+      }
+    } catch (e) {
+      if (e is GeminiParseException || e is GeminiApiException) rethrow;
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await Future.delayed(retryDelay * retryCount);
+        continue;
+      }
+      throw GeminiNetworkException('$e');
+    }
+  }
+
+  throw GeminiNetworkException('All retries exhausted');
+}
+
+class SkillProposal {
+  final String name;
+  final String category;
+  final int level; // 1=beginner, 2=intermediate, 3=advanced
+  final String description;
+  final bool proposedCompleted;
+
+  SkillProposal({
+    required this.name,
+    required this.category,
+    required this.level,
+    required this.description,
+    required this.proposedCompleted,
+  });
+
+  factory SkillProposal.fromJson(Map<String, dynamic> json) {
+    return SkillProposal(
+      name: json['name'] ?? '',
+      category: json['category'] ?? 'General',
+      level: json['level'] ?? 1,
+      description: json['description'] ?? '',
+      proposedCompleted: json['completed'] ?? false,
+    );
+  }
+}
+
+Future<List<SkillProposal>> fetchSkillProposal(String goal, String currentSkillsText, String apiKey) async {
+  final prompt = '''
+You are an expert career advisor. A user wants to achieve a career goal and has described their background. Based on their description, propose a list of skills needed for the goal and indicate which ones they likely already have.
+
+Target career/goal: $goal
+
+User's self-described background:
+$currentSkillsText
+
+Return a JSON array of skills with this structure:
+[
+  {
+    "name": "<skill name>",
+    "description": "<one sentence explaining what this skill is and why it matters for the goal>",
+    "category": "<category like 'Programming', 'Communication', 'Domain Knowledge', 'Tools', etc.>",
+    "level": <1 for beginner/foundational, 2 for intermediate, 3 for advanced/specialized>,
+    "completed": <true if the user likely already has this skill based on their description, false otherwise>
+  }
+]
+
+Include 10-20 skills covering the main requirements for the goal. Order skills within each category from beginner (level 1) to advanced (level 3). Be generous in marking skills as completed if the user's description suggests relevant experience.
+
+Only return valid JSON. Do not include any explanations or extra text.
+''';
+
+  final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
+
+  final requestBody = jsonEncode({
+    "contents": [
+      {"parts": [
+        {"text": prompt}
+      ]}
+    ]
+  });
+
+  const maxRetries = 3;
+  int retryCount = 0;
+  const retryDelay = Duration(seconds: 2);
+
+  while (retryCount < maxRetries) {
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+        if (text != null) {
+          try {
+            String cleaned = text.trim();
+            if (cleaned.startsWith('```')) {
+              cleaned = cleaned.substring(cleaned.indexOf('\n') + 1);
+              if (cleaned.endsWith('```')) {
+                cleaned = cleaned.substring(0, cleaned.lastIndexOf('```')).trim();
+              }
+            }
+            final jsonData = jsonDecode(cleaned) as List<dynamic>;
+            return jsonData.map((e) => SkillProposal.fromJson(e)).toList();
+          } catch (e) {
+            debugPrint('Failed to parse JSON from Gemini: $e');
+            throw GeminiParseException('Failed to parse response: $e');
+          }
+        }
+        throw GeminiParseException('No text in Gemini response');
+      } else if (response.statusCode == 429 || response.statusCode == 503) {
+        retryCount++;
+        if (retryCount < maxRetries) {
+          await Future.delayed(retryDelay * retryCount * (response.statusCode == 429 ? 2 : 1));
+          continue;
+        }
+        throw GeminiApiException(response.statusCode, response.body);
+      } else {
+        throw GeminiApiException(response.statusCode, response.body);
+      }
+    } catch (e) {
+      if (e is GeminiParseException || e is GeminiApiException) rethrow;
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await Future.delayed(retryDelay * retryCount);
+        continue;
+      }
+      throw GeminiNetworkException('$e');
+    }
+  }
+
+  throw GeminiNetworkException('All retries exhausted');
+}
+
 Future<List<Resource>> fetchEducationResources(PlanItem item, String apiKey) async {
   final prompt = '''
 You are an expert career advisor. Given the following plan item, recommend learning resources.

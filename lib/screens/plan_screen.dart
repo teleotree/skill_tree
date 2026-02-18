@@ -96,6 +96,19 @@ class _PlanScreenState extends State<PlanScreen> {
     _savePlan();
   }
 
+  void _toggleActive(PlanItem item) {
+    setState(() {
+      // If activating this item, deactivate all others
+      if (!item.isActive) {
+        for (final i in _plan!.items) {
+          i.isActive = false;
+        }
+      }
+      item.isActive = !item.isActive;
+    });
+    _savePlan();
+  }
+
   void _onReorder(int oldIndex, int newIndex) {
     setState(() {
       if (newIndex > oldIndex) newIndex--;
@@ -225,8 +238,64 @@ class _PlanScreenState extends State<PlanScreen> {
     );
   }
 
+  Widget _buildPriorityChip(String priority, {bool completed = false}) {
+    Color bgColor;
+    String label;
+    switch (priority) {
+      case 'high':
+        bgColor = completed ? const Color(0xFF5D1A1A) : Colors.red[700]!;
+        label = 'High';
+        break;
+      case 'medium':
+        bgColor = completed ? const Color(0xFF5D4A1A) : Colors.orange[700]!;
+        label = 'Medium';
+        break;
+      case 'low':
+      default:
+        bgColor = completed ? const Color(0xFF1A4D1A) : Colors.green[700]!;
+        label = 'Low';
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(label, style: TextStyle(
+        color: completed ? Colors.white60 : Colors.white,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+      )),
+    );
+  }
+
+  Widget _buildLevelIndicator(int level, {bool completed = false}) {
+    final colors = [Colors.green, Colors.orange, Colors.red];
+    final labels = ['Beginner', 'Intermediate', 'Advanced'];
+    final color = colors[level - 1];
+    final label = labels[level - 1];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: completed ? color.withOpacity(0.1) : color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: completed ? color.withOpacity(0.5) : color, width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: completed ? color.withOpacity(0.6) : color,
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubtitleChips(PlanItem item) {
     final completed = item.completed;
+    final level = item.fields['level'] as int?;
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Wrap(
@@ -235,6 +304,10 @@ class _PlanScreenState extends State<PlanScreen> {
           _buildTypeChip(item.type, completed: completed),
           if (item.type == 'skill')
             _buildTagChip(item.fields['tag'] as String? ?? 'other', completed: completed),
+          if (level != null && level >= 1 && level <= 3)
+            _buildLevelIndicator(level, completed: completed),
+          if (item.priority != null)
+            _buildPriorityChip(item.priority!, completed: completed),
         ],
       ),
     );
@@ -403,6 +476,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget _buildTopLevelCard(PlanItem item, int topLevelIndex) {
     final isExpanded = _expandedId == item.id;
     final completed = item.completed;
+    final isActive = item.isActive;
     final linkedSkills = item.linkedSkillIds
         .map((id) => _itemById(id))
         .where((s) => s != null)
@@ -411,8 +485,14 @@ class _PlanScreenState extends State<PlanScreen> {
 
     return Card(
       key: ValueKey(item.id),
-      margin: EdgeInsets.only(bottom: 8),
-      color: completed ? Color(0xFF424242) : Color(0xFF303030),
+      margin: const EdgeInsets.only(bottom: 8),
+      color: completed ? const Color(0xFF424242) : (isActive ? const Color(0xFF1A3A4A) : const Color(0xFF303030)),
+      shape: isActive
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.blue[400]!, width: 2),
+            )
+          : null,
       child: Column(
         children: [
           ListTile(
@@ -423,7 +503,7 @@ class _PlanScreenState extends State<PlanScreen> {
                   index: topLevelIndex,
                   child: Icon(Icons.drag_handle, color: completed ? Colors.grey[600] : Colors.grey[400]),
                 ),
-                SizedBox(width: 4),
+                const SizedBox(width: 4),
                 Checkbox(
                   value: completed,
                   onChanged: (_) => _toggleCompleted(item),
@@ -433,21 +513,51 @@ class _PlanScreenState extends State<PlanScreen> {
                 ),
               ],
             ),
-            title: Text(
-              item.name,
-              style: TextStyle(
-                decoration: completed ? TextDecoration.lineThrough : null,
-                color: completed ? Colors.grey[500] : Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.name,
+                    style: TextStyle(
+                      decoration: completed ? TextDecoration.lineThrough : null,
+                      color: completed ? Colors.grey[500] : Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                if (isActive && !completed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[700],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('ACTIVE', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+              ],
             ),
             subtitle: _buildSubtitleChips(item),
-            trailing: IconButton(
-              icon: Icon(
-                isExpanded ? Icons.expand_less : Icons.expand_more,
-                color: completed ? Colors.grey[500] : Colors.white70,
-              ),
-              onPressed: () => _toggleExpanded(item.id),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!completed)
+                  IconButton(
+                    icon: Icon(
+                      isActive ? Icons.star : Icons.star_border,
+                      color: isActive ? Colors.amber : Colors.grey[500],
+                      size: 22,
+                    ),
+                    onPressed: () => _toggleActive(item),
+                    tooltip: isActive ? 'Remove from active' : 'Set as active goal',
+                  ),
+                IconButton(
+                  icon: Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: completed ? Colors.grey[500] : Colors.white70,
+                  ),
+                  onPressed: () => _toggleExpanded(item.id),
+                ),
+              ],
             ),
           ),
           if (isExpanded)
@@ -476,12 +586,145 @@ class _PlanScreenState extends State<PlanScreen> {
     );
   }
 
+  Widget _buildProgressHeader() {
+    final total = _plan!.items.length;
+    final completed = _plan!.items.where((i) => i.completed).length;
+    final activeItem = _plan!.items.where((i) => i.isActive).firstOrNull;
+    final progress = total > 0 ? completed / total : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.blueGrey[900],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$completed / $total completed',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                '${(progress * 100).toInt()}%',
+                style: TextStyle(color: Colors.green[400], fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: progress,
+            backgroundColor: Colors.grey[700],
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.green[400]!),
+          ),
+          if (activeItem != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.star, color: Colors.amber, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Active: ${activeItem.name}',
+                    style: TextStyle(color: Colors.blue[200], fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showAddStepDialog() {
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Add Step', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Title',
+                labelStyle: TextStyle(color: Colors.grey[400]),
+                border: const OutlineInputBorder(),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey[600]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.blue[400]!),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Description (optional)',
+                labelStyle: TextStyle(color: Colors.grey[400]),
+                border: const OutlineInputBorder(),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.grey[600]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.blue[400]!),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey[400])),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isEmpty) return;
+
+              final newItem = PlanItem(
+                id: 'custom-${DateTime.now().millisecondsSinceEpoch}',
+                type: 'skill',
+                name: name,
+                description: descController.text.trim(),
+                fields: {'tag': 'other'},
+              );
+
+              setState(() {
+                _plan!.items.add(newItem);
+              });
+              _savePlan();
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_plan == null) {
       return Scaffold(
-        appBar: AppBar(title: Text('Plan')),
-        body: Center(child: CircularProgressIndicator()),
+        appBar: AppBar(title: const Text('Plan')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -491,14 +734,53 @@ class _PlanScreenState extends State<PlanScreen> {
       appBar: AppBar(
         title: Text('Plan: ${_plan!.goal}'),
       ),
-      body: ReorderableListView.builder(
-        padding: EdgeInsets.all(16),
-        itemCount: topLevel.length,
-        onReorder: _onReorder,
-        buildDefaultDragHandles: false,
-        itemBuilder: (context, index) {
-          return _buildTopLevelCard(topLevel[index], index);
-        },
+      body: Column(
+        children: [
+          _buildProgressHeader(),
+          Expanded(
+            child: ReorderableListView.builder(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 8),
+              itemCount: topLevel.length,
+              onReorder: _onReorder,
+              buildDefaultDragHandles: false,
+              itemBuilder: (context, index) {
+                return _buildTopLevelCard(topLevel[index], index);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+            child: Card(
+              color: const Color(0xFF303030),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.blue[400]!, width: 1, style: BorderStyle.solid),
+              ),
+              child: InkWell(
+                onTap: _showAddStepDialog,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add, color: Colors.blue[400]),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Add Step',
+                        style: TextStyle(
+                          color: Colors.blue[400],
+                          fontWeight: FontWeight.w500,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

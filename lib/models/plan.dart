@@ -5,12 +5,14 @@ class Plan {
   final String goal;
   final DateTime createdAt;
   final List<PlanItem> items;
+  final List<String> initiallyCompletedSkills;
 
   Plan({
     required this.id,
     required this.goal,
     required this.createdAt,
     required this.items,
+    this.initiallyCompletedSkills = const [],
   });
 
   factory Plan.fromJson(Map<String, dynamic> json) {
@@ -21,6 +23,8 @@ class Plan {
       items: (json['items'] as List<dynamic>? ?? [])
           .map((e) => PlanItem.fromJson(e))
           .toList(),
+      initiallyCompletedSkills: (json['initially_completed_skills'] as List<dynamic>?)
+          ?.map((e) => e as String).toList() ?? [],
     );
   }
 
@@ -29,5 +33,6 @@ class Plan {
     'goal': goal,
     'created_at': createdAt.toIso8601String(),
     'items': items.map((e) => e.toJson()).toList(),
+    'initially_completed_skills': initiallyCompletedSkills,
   };
 }
