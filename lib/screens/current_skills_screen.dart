@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import '../services/gemini_service.dart';
 import 'skill_proposal_screen.dart';
 
-const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-
 const List<String> _loadingMessages = [
   'Analyzing your background...',
   'Mapping your skills...',
@@ -80,11 +78,6 @@ class _CurrentSkillsScreenState extends State<CurrentSkillsScreen> {
       return;
     }
 
-    if (_geminiApiKey.isEmpty) {
-      setState(() => _error = 'GEMINI_API_KEY not set.');
-      return;
-    }
-
     setState(() {
       _loading = true;
       _error = null;
@@ -92,7 +85,7 @@ class _CurrentSkillsScreenState extends State<CurrentSkillsScreen> {
     _startLoadingMessages();
 
     try {
-      final proposals = await fetchSkillProposal(widget.goal, text, _geminiApiKey);
+      final proposals = await fetchSkillProposal(widget.goal, text);
       if (!mounted) return;
 
       Navigator.push(
@@ -105,6 +98,9 @@ class _CurrentSkillsScreenState extends State<CurrentSkillsScreen> {
           ),
         ),
       );
+    } on GeminiRateLimitException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     } on GeminiNetworkException {
       if (!mounted) return;
       setState(() => _error = 'Network error. Please check your connection and try again.');

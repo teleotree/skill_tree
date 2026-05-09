@@ -4,8 +4,6 @@ import '../models/models.dart';
 import '../services/plan_service.dart';
 import '../services/gemini_service.dart';
 
-const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-
 class PlanScreen extends StatefulWidget {
   final String planId;
 
@@ -129,25 +127,26 @@ class _PlanScreenState extends State<PlanScreen> {
   }
 
   Future<void> _findEducation(PlanItem item) async {
-    if (_geminiApiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('GEMINI_API_KEY not set.')),
-      );
-      return;
-    }
-
     setState(() {
       _loadingResources.add(item.id);
     });
 
     try {
-      final resources = await fetchEducationResources(item, _geminiApiKey);
+      final resources = await fetchEducationResources(item);
       if (!mounted) return;
       setState(() {
         item.resources = resources;
         _loadingResources.remove(item.id);
       });
       _savePlan();
+    } on GeminiRateLimitException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingResources.remove(item.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {

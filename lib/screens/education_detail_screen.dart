@@ -3,8 +3,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/models.dart';
 import '../services/gemini_service.dart';
 
-const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-
 class EducationDetailScreen extends StatefulWidget {
   final EducationNode education;
 
@@ -19,10 +17,6 @@ class _EducationDetailScreenState extends State<EducationDetailScreen> {
   bool _loadingResources = false;
 
   Future<void> _findResources() async {
-    if (_geminiApiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('GEMINI_API_KEY not set.')));
-      return;
-    }
     setState(() => _loadingResources = true);
     try {
       final item = PlanItem(
@@ -32,8 +26,12 @@ class _EducationDetailScreenState extends State<EducationDetailScreen> {
         description: widget.education.description,
         fields: {'type': widget.education.type, 'years': widget.education.years},
       );
-      final resources = await fetchEducationResources(item, _geminiApiKey);
+      final resources = await fetchEducationResources(item);
       if (mounted) setState(() => _resources = resources);
+    } on GeminiRateLimitException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to fetch resources.')));

@@ -32,24 +32,51 @@ lib/
 ├── models/                # Data models (SkillTreeResponse, SkillNode, Plan, etc.)
 ├── screens/               # UI screens (MainNavScreen is root navigation)
 ├── services/              # Business logic
-│   ├── gemini_service.dart    # Google Gemini API integration
+│   ├── gemini_service.dart    # Backend API client (proxies to Gemini)
+│   ├── device_service.dart    # Device ID generation/storage
 │   ├── plan_service.dart      # SharedPreferences plan storage
 │   ├── career_cache_service.dart
 │   └── history_service.dart
 └── widgets/               # Reusable UI components
+
+backend/                   # Cloudflare Worker backend
+├── src/index.ts          # Worker entry point
+├── wrangler.toml         # Cloudflare configuration
+└── package.json          # Node dependencies
 ```
 
 **Key patterns:**
 - `MainNavScreen` manages bottom navigation with nested navigators per tab
 - All persistence uses SharedPreferences (plans stored as JSON)
-- No backend server - Gemini API called directly from app
+- Backend proxy handles API key security and rate limiting
+- Device ID (UUID v4) sent via X-Device-ID header for rate limiting
 
-## API Integration
+## Backend Service
 
-Uses Google Gemini 2.5 Flash model for AI-generated career guidance:
-- API key loaded from `.env` file (GEMINI_API_KEY)
-- Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`
-- Service: `lib/services/gemini_service.dart`
+Cloudflare Worker backend (`backend/`) proxies requests to Google Gemini API:
+- **Rate limiting:** 5/min, 30/hour, 100/day per device
+- **Endpoints:**
+  - POST /api/skill-tree - Generate skill trees
+  - POST /api/skill-proposal - Get skill proposals
+  - POST /api/gap-analysis - Perform gap analysis
+  - POST /api/education-resources - Get learning resources
+
+**Deployment:**
+```bash
+cd backend
+npm install
+npx wrangler login
+npx wrangler kv:namespace create RATE_LIMIT
+npx wrangler secret put GEMINI_API_KEY
+npm run deploy
+```
+
+## Running the App
+
+After deploying the backend, update API_BASE_URL when running:
+```bash
+flutter run --dart-define=API_BASE_URL=https://skill-tree-api.YOUR_SUBDOMAIN.workers.dev
+```
 
 ## Development Tools
 

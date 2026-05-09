@@ -1,0 +1,15 @@
+name = "skill-tree-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# KV Namespace for rate limiting
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "PLACEHOLDER_KV_ID"
+preview_id = "PLACEHOLDER_PREVIEW_KV_ID"
+
+# Secrets (set via `wrangler secret put GEMINI_API_KEY`)
+# GEMINI_API_KEY = "..."
+
+[vars]
+ENVIRONMENT = "production"

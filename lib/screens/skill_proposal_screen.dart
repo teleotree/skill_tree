@@ -6,8 +6,6 @@ import '../services/gemini_service.dart';
 import '../services/plan_service.dart';
 import 'plan_screen.dart';
 
-const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-
 const List<String> _loadingMessages = [
   'Analyzing your gaps...',
   'Building your action plan...',
@@ -94,11 +92,6 @@ class _SkillProposalScreenState extends State<SkillProposalScreen> {
   }
 
   void _analyzeGap() async {
-    if (_geminiApiKey.isEmpty) {
-      setState(() => _error = 'GEMINI_API_KEY not set.');
-      return;
-    }
-
     setState(() {
       _loading = true;
       _error = null;
@@ -114,7 +107,6 @@ class _SkillProposalScreenState extends State<SkillProposalScreen> {
         widget.goal,
         widget.currentSkillsText,
         checkedSkills,
-        _geminiApiKey,
       );
       if (!mounted) return;
 
@@ -130,6 +122,9 @@ class _SkillProposalScreenState extends State<SkillProposalScreen> {
         context,
         MaterialPageRoute(builder: (context) => PlanScreen(planId: plan.id)),
       );
+    } on GeminiRateLimitException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     } on GeminiNetworkException {
       if (!mounted) return;
       setState(() => _error = 'Network error. Please check your connection and try again.');

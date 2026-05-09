@@ -69,8 +69,6 @@ const List<String> _loadingMessages = [
   'Turning it off and on again...',
 ];
 
-const String _geminiApiKey = String.fromEnvironment('GEMINI_API_KEY');
-
 class ExplorerSearchScreen extends StatefulWidget {
   @override
   State<ExplorerSearchScreen> createState() => _ExplorerSearchScreenState();
@@ -145,11 +143,6 @@ class _ExplorerSearchScreenState extends State<ExplorerSearchScreen> {
     }
     setState(() => _validationError = null);
 
-    if (_geminiApiKey.isEmpty) {
-      setState(() => _error = 'GEMINI_API_KEY not set. Run with --dart-define=GEMINI_API_KEY=<key>');
-      return;
-    }
-
     setState(() {
       _loading = true;
       _error = null;
@@ -157,7 +150,7 @@ class _ExplorerSearchScreenState extends State<ExplorerSearchScreen> {
     _startLoadingMessages();
 
     try {
-      final skillTree = await fetchSkillTreeFromGemini(goal, _geminiApiKey);
+      final skillTree = await fetchSkillTreeFromGemini(goal);
       if (!mounted) return;
       await HistoryService.addEntry(skillTree);
       await _loadHistory();
@@ -180,6 +173,9 @@ class _ExplorerSearchScreenState extends State<ExplorerSearchScreen> {
           builder: (context) => CareerOverviewScreen(skillTree: skillTree),
         ),
       );
+    } on GeminiRateLimitException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
     } on GeminiNetworkException {
       if (!mounted) return;
       setState(() => _error = 'Network error. Please check your connection and try again.');
