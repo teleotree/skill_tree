@@ -5,8 +5,7 @@ compatibility_date = "2024-01-01"
 # KV Namespace for rate limiting
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
-id = "PLACEHOLDER_KV_ID"
-preview_id = "PLACEHOLDER_PREVIEW_KV_ID"
+id = "de8f725740394d3c85b29d6b71b02a49"
 
 # Secrets (set via `wrangler secret put GEMINI_API_KEY`)
 # GEMINI_API_KEY = "..."

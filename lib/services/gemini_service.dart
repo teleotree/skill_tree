@@ -40,7 +40,7 @@ class GeminiRateLimitException implements Exception {
 /// Format: https://skill-tree-api.YOUR_SUBDOMAIN.workers.dev
 const String _apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://skill-tree-api.YOUR_SUBDOMAIN.workers.dev',
+  defaultValue: 'https://skill-tree-api.teleotree.workers.dev',
 );
 
 Future<Map<String, String>> _getHeaders() async {
