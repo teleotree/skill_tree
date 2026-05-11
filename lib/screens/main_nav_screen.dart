@@ -19,7 +19,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
+      onPopInvoked: (didPop) {
         if (didPop) return;
         final navigatorState = _navigatorKeys[_currentIndex].currentState;
         if (navigatorState != null && navigatorState.canPop()) {
