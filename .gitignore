@@ -53,3 +53,6 @@ android/app/release-keystore.jks
 
 # Distribution builds
 *.zip
+.wrangler/
+sample_response_data_scientist.json
+tools/prompt_log.json

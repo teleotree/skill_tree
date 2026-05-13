@@ -38,14 +38,25 @@ Future<void> main(List<String> args) async {
   final prompt = '''
 You are an expert career advisor and curriculum designer. I will give you a job or skill that someone wants to learn.
 
-For the given job or skill, return a hierarchical, ordered list of skills required to attain it. Each skill should include:
-- "name": the skill name
-- "description": a one-sentence summary of what the skill is and why it matters
-- "resources": a list of recommended resources (each with "title" and "url")
-- "subskills": a list of subskills (with the same structure), ordered by learning sequence
-- "tag": either "degree" (learned as part of a required degree), "certification" (learned as part of a required certification), "experience" (learned primarily through work experience), or "other" (learned outside formal education/certification/experience)
+Return a comprehensive overview with the following sections:
 
-In addition to skills and experience, also return an "education" field: a list of traditional education and certification requirements for the goal.
+## 1. Summary
+Provide a detailed "summary" object with these fields (each should be 2-4 sentences):
+- "narrative": What do people who achieve this goal actually do? Describe the role/skill in practice.
+- "core_competencies": What are the most important aspects and responsibilities of this role/skill?
+- "considerations": What should someone think about when deciding whether to pursue this?
+- "market_outlook": How competitive is the field? What's the job market and growth outlook?
+- "compensation": What are typical salary ranges and earning potential at different levels?
+- "challenges": What are the main difficulties, obstacles, and downsides?
+- "benefits": What are the rewards, advantages, and fulfilling aspects?
+- "career_path": What's the typical progression? Where do people come from and where do they go?
+- "day_in_life": What does a typical day or week look like? Give concrete examples of activities.
+- "industries": Which industry sectors and company types commonly need this role/skill?
+- "work_style": What's the remote work potential, collaboration level, autonomy, and work-life balance?
+- "barrier_to_entry": How hard is it to break in? What's the typical ramp-up time for newcomers?
+
+## 2. Education
+Return an "education" field: a list of education and certification requirements.
 
 Each education/certification should include:
 - "name": the name of the degree or certification
@@ -56,16 +67,40 @@ Each education/certification should include:
 - "type": either "degree" or "certification"
 - "options": a list of alternative options, each with name, description, years, links, prerequisites
 
-Also return an "experience" field: a list of experience areas required to attain the goal. Each experience area should include:
+## 3. Experience
+Return an "experience" field: a list of experience areas required. Each should include:
 - "title": the name of the experience area
-- "description": a one-sentence summary
-- "years_required": the typical number of years required
-- "breakdown": a list of bullet points describing specific experiences
+- "description": a one-sentence summary of the experience and why it matters
+- "years_required": the typical number of years required in this area
+- "breakdown": a list of bullet points describing specific experiences or milestones
+
+## 4. Skills
+Return a "skills" field: a hierarchical, ordered list of skills required. Each skill should include:
+- "name": the skill name
+- "description": a one-sentence summary of what the skill is and why it matters
+- "resources": a list of recommended resources (each with "title" and "url")
+- "subskills": a list of subskills (with the same structure), ordered by learning sequence
+- "tag": either "degree", "certification", "experience", or "other"
+- "education_name": if tag is "degree" or "certification", the exact name from the education list. Omit otherwise.
 
 Return your response as a JSON object with this structure:
 {
   "goal": "<the original goal>",
   "description": "<one-sentence summary of the goal>",
+  "summary": {
+    "narrative": "...",
+    "core_competencies": "...",
+    "considerations": "...",
+    "market_outlook": "...",
+    "compensation": "...",
+    "challenges": "...",
+    "benefits": "...",
+    "career_path": "...",
+    "day_in_life": "...",
+    "industries": "...",
+    "work_style": "...",
+    "barrier_to_entry": "..."
+  },
   "education": [ ... ],
   "experience": [ ... ],
   "skills": [ ... ]
@@ -81,7 +116,10 @@ Only return valid JSON. Do not include any explanations or extra text.
       {"parts": [
         {"text": "$prompt\n\nGoal: $goal"}
       ]}
-    ]
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 65536,
+    }
   };
 
   try {
@@ -120,7 +158,9 @@ Only return valid JSON. Do not include any explanations or extra text.
         final skills = (parsed['skills'] as List?)?.length ?? 0;
         final education = (parsed['education'] as List?)?.length ?? 0;
         final experience = (parsed['experience'] as List?)?.length ?? 0;
-        print('Parsed: $skills skills, $education education items, $experience experience items');
+        final hasSummary = parsed['summary'] != null;
+        final summaryFields = hasSummary ? (parsed['summary'] as Map).keys.length : 0;
+        print('Parsed: $skills skills, $education education, $experience experience, summary: $summaryFields fields');
       }
     } else {
       print('Error: HTTP ${response.statusCode}');

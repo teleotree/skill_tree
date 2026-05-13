@@ -33,7 +33,7 @@ class _CareerOverviewScreenState extends State<CareerOverviewScreen> with Single
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -70,71 +70,185 @@ class _CareerOverviewScreenState extends State<CareerOverviewScreen> with Single
   void _expandSection(String section) => setState(() => expandedKeys.addAll(_allSectionKeys(section)));
   void _collapseSection(String section) => setState(() => expandedKeys.removeAll(_allSectionKeys(section)));
 
-  Widget _buildSummaryCard(BuildContext context) {
-    int minTotalYears = 0;
-    int maxTotalYears = 0;
-    int totalExperienceYears = 0;
-
-    for (var edu in widget.skillTree.education) {
-      if (edu.options.isNotEmpty) {
-        int minYears = edu.options.map((o) => o.years).fold(1000, (a, b) => b < a ? b : a);
-        int maxYears = edu.options.map((o) => o.years).fold(0, (a, b) => b > a ? b : a);
-        minTotalYears += minYears;
-        maxTotalYears += maxYears;
-      } else {
-        minTotalYears += edu.years;
-        maxTotalYears += edu.years;
-      }
-    }
-    for (var exp in widget.skillTree.experience) {
-      totalExperienceYears += exp.yearsRequired;
-    }
-
-    String yearsText = minTotalYears == maxTotalYears ? '$minTotalYears years' : '$minTotalYears to $maxTotalYears years';
-
+  Widget _buildSummarySection(String title, String content, IconData icon, Color color) {
+    if (content.isEmpty) return const SizedBox.shrink();
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blueGrey[900],
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 4))],
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(widget.skillTree.goal, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
-          const SizedBox(height: 8),
-          Text('Total Years of Degrees/Certifications Required: $yearsText', style: TextStyle(color: Colors.blue[300], fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
-          Text('Total Years of Experience Required: $totalExperienceYears', style: TextStyle(color: Colors.tealAccent[400], fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          Text(
-            widget.skillTree.description.isNotEmpty
-                ? widget.skillTree.description
-                : 'This skill tree outlines the key skills and resources needed to achieve the goal of "${widget.skillTree.goal}".',
-            style: const TextStyle(color: Colors.white70, fontSize: 15),
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.trending_up),
-            label: const Text('Start Gap Analysis'),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CurrentSkillsScreen(goal: widget.skillTree.goal),
+          const SizedBox(height: 12),
+          Text(content, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryTab() {
+    final summary = widget.skillTree.summary;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Header with goal and description
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.blueGrey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.skillTree.goal,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24),
+              ),
+              if (widget.skillTree.description.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  widget.skillTree.description,
+                  style: const TextStyle(color: Colors.white70, fontSize: 15),
                 ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.trending_up),
+                label: const Text('Start Gap Analysis'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CurrentSkillsScreen(goal: widget.skillTree.goal),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[700],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Summary sections (if available)
+        if (summary != null) ...[
+          _buildSummarySection(
+            'What You\'ll Do',
+            summary.narrative,
+            Icons.work_outline,
+            Colors.blue[400]!,
+          ),
+          _buildSummarySection(
+            'Core Competencies',
+            summary.coreCompetencies,
+            Icons.star_outline,
+            Colors.amber[400]!,
+          ),
+          _buildSummarySection(
+            'A Day in the Life',
+            summary.dayInLife,
+            Icons.schedule,
+            Colors.purple[300]!,
+          ),
+          _buildSummarySection(
+            'Career Path',
+            summary.careerPath,
+            Icons.trending_up,
+            Colors.green[400]!,
+          ),
+          _buildSummarySection(
+            'Industries & Sectors',
+            summary.industries,
+            Icons.business,
+            Colors.orange[400]!,
+          ),
+          _buildSummarySection(
+            'Compensation',
+            summary.compensation,
+            Icons.attach_money,
+            Colors.green[300]!,
+          ),
+          _buildSummarySection(
+            'Market Outlook',
+            summary.marketOutlook,
+            Icons.show_chart,
+            Colors.cyan[400]!,
+          ),
+          _buildSummarySection(
+            'Work Style',
+            summary.workStyle,
+            Icons.home_work,
+            Colors.teal[300]!,
+          ),
+          _buildSummarySection(
+            'Benefits & Rewards',
+            summary.benefits,
+            Icons.thumb_up_outlined,
+            Colors.lightGreen[400]!,
+          ),
+          _buildSummarySection(
+            'Challenges',
+            summary.challenges,
+            Icons.warning_amber_outlined,
+            Colors.red[300]!,
+          ),
+          _buildSummarySection(
+            'Barrier to Entry',
+            summary.barrierToEntry,
+            Icons.lock_open,
+            Colors.deepOrange[300]!,
+          ),
+          _buildSummarySection(
+            'Things to Consider',
+            summary.considerations,
+            Icons.lightbulb_outline,
+            Colors.yellow[600]!,
+          ),
+        ] else ...[
+          // Fallback for old data without summary
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey[850],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.info_outline, color: Colors.grey[500], size: 48),
+                const SizedBox(height: 12),
+                Text(
+                  'Detailed summary not available for this search.',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Try a new search to see the expanded overview.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -219,28 +333,35 @@ class _CareerOverviewScreenState extends State<CareerOverviewScreen> with Single
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Career: ${widget.skillTree.goal}')),
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16), child: _buildSummaryCard(context))),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _TabBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  tabs: const [Tab(text: 'Education'), Tab(text: 'Experience'), Tab(text: 'Skills')],
-                  indicatorColor: Colors.blue[300],
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white54,
-                ),
-              ),
+      body: Column(
+        children: [
+          Container(
+            color: Colors.blueGrey[900],
+            child: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(text: 'Summary'),
+                Tab(text: 'Education'),
+                Tab(text: 'Experience'),
+                Tab(text: 'Skills'),
+              ],
+              indicatorColor: Colors.blue[300],
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.white54,
             ),
-          ];
-        },
-        body: TabBarView(
-          controller: _tabController,
-          children: [_buildEducationTab(), _buildExperienceTab(), _buildSkillsTab()],
-        ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildSummaryTab(),
+                _buildEducationTab(),
+                _buildExperienceTab(),
+                _buildSkillsTab(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -501,22 +622,4 @@ class _CareerOverviewScreenState extends State<CareerOverviewScreen> with Single
       ),
     );
   }
-}
-
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  final TabBar tabBar;
-  _TabBarDelegate(this.tabBar);
-
-  @override
-  double get minExtent => tabBar.preferredSize.height;
-  @override
-  double get maxExtent => tabBar.preferredSize.height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(color: Colors.blueGrey[900], child: tabBar);
-  }
-
-  @override
-  bool shouldRebuild(_TabBarDelegate oldDelegate) => false;
 }
